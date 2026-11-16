@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 PUISSANCE_ESTIMEE_W = 15.0   # puissance CPU supposee si RAPL indisponible
-REPETITIONS = 5
+REPETITIONS = 10
 TAILLES = [500, 1000, 2000, 4000]
 
 RAPL = "/sys/class/powercap/intel-rapl:0/energy_uj"
@@ -99,20 +99,29 @@ def lire_rapl():
         return int(f.read())  # microjoules
 
 
+DUREE_MIN_S = 1.0   # on répète le tri jusqu'à ~1 s pour que RAPL soit lisible
+
+
 def mesurer(fonction, donnees, rapl):
-    """Retourne (temps_s, energie_J, energie_mesuree?)."""
+    """Retourne (temps_s, energie_J, energie_mesuree?) pour UNE exécution moyenne."""
     if rapl:
         e0 = lire_rapl()
+    n_exec = 0
     t0 = time.perf_counter()
-    fonction(donnees)
-    t = time.perf_counter() - t0
+    while True:
+        fonction(donnees)
+        n_exec += 1
+        t = time.perf_counter() - t0
+        if t >= DUREE_MIN_S:
+            break
+    t_moy = t / n_exec
     if rapl:
         e1 = lire_rapl()
         if e1 < e0:  # le compteur a debord
             with open(RAPL_MAX) as f:
                 e1 += int(f.read())
-        return t, (e1 - e0) / 1e6, True
-    return t, t * PUISSANCE_ESTIMEE_W, False
+        return t_moy, (e1 - e0) / 1e6 / n_exec, True
+    return t_moy, t_moy * PUISSANCE_ESTIMEE_W, False
 
 
 def memoire_pic(fonction, donnees):
@@ -124,6 +133,24 @@ def memoire_pic(fonction, donnees):
     return pic / 1024  # Ko
 
 
+TYPES_DONNEES = ["aleatoire", "trie", "inverse", "presque_trie"]
+
+
+def generer(type_donnees, n):
+    """Tableau de n entiers, selon le type de donnees."""
+    a = [random.randint(0, 10**6) for _ in range(n)]
+    if type_donnees == "trie":
+        a.sort()
+    elif type_donnees == "inverse":
+        a.sort(reverse=True)
+    elif type_donnees == "presque_trie":
+        a.sort()
+        for _ in range(max(1, n // 20)):      # ~5 % d'elements deplaces
+            i, j = random.randrange(n), random.randrange(n)
+            a[i], a[j] = a[j], a[i]
+    return a
+
+
 def main():
     random.seed(1)
     rapl = rapl_disponible()
@@ -131,38 +158,46 @@ def main():
           else f"ESTIMEE ({PUISSANCE_ESTIMEE_W} W x temps)")
 
     lignes = []
-    for n in TAILLES:
-        donnees = [random.randint(0, 10**6) for _ in range(n)]
-        for nom, f in ALGOS.items():
-            res = [mesurer(f, donnees, rapl) for _ in range(REPETITIONS)]
-            lignes.append({
-                "algo": nom,
-                "n": n,
-                "temps_s": statistics.median(r[0] for r in res),
-                "energie_J": statistics.median(r[1] for r in res),
-                "memoire_Ko": memoire_pic(f, donnees),
-                "energie_mesuree": res[0][2],
-            })
-            print(f"n={n:<5} {nom:<17} {lignes[-1]['temps_s']*1000:8.1f} ms  "
-                  f"{lignes[-1]['energie_J']:.4f} J  {lignes[-1]['memoire_Ko']:.0f} Ko")
+    for type_donnees in TYPES_DONNEES:
+        for n in TAILLES:
+            donnees = generer(type_donnees, n)
+            for nom, f in ALGOS.items():
+                res = [mesurer(f, donnees, rapl) for _ in range(REPETITIONS)]
+                lignes.append({
+                    "donnees": type_donnees,
+                    "algo": nom,
+                    "n": n,
+                    "temps_s": statistics.median(r[0] for r in res),
+                    "energie_J": statistics.median(r[1] for r in res),
+                    "memoire_Ko": memoire_pic(f, donnees),
+                    "energie_mesuree": res[0][2],
+                    "temps_std_s": statistics.stdev(r[0] for r in res),
+                    "energie_std_J": statistics.stdev(r[1] for r in res),
+                })
+                print(f"{type_donnees:<12} n={n:<5} {nom:<17} "
+                      f"{lignes[-1]['temps_s']*1000:8.3f} ms  "
+                      f"{lignes[-1]['energie_J']:.4f} J  "
+                      f"{lignes[-1]['memoire_Ko']:.0f} Ko")
 
     df = pd.DataFrame(lignes)
     df.to_csv("resultats_benchmark.csv", index=False)
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
-    for ax, col, titre in zip(axes,
-                              ["temps_s", "energie_J", "memoire_Ko"],
-                              ["Temps (s)", "Energie (J)", "Memoire pic (Ko)"]):
-        for nom, g in df.groupby("algo"):
-            ax.plot(g["n"], g[col], "o-", label=nom)
-        ax.set_xlabel("Taille du tableau n")
-        ax.set_ylabel(titre)
-        ax.set_yscale("log")
-        ax.set_title(titre)
-    axes[0].legend()
-    plt.tight_layout()
-    plt.savefig("graphique_benchmark.png", dpi=200)
-    print("Fichiers : resultats_benchmark.csv, graphique_benchmark.png")
+    for type_donnees, d in df.groupby("donnees"):
+        fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+        for ax, col, titre in zip(axes,
+                                  ["temps_s", "energie_J", "memoire_Ko"],
+                                  ["Temps (s)", "Energie (J)", "Memoire pic (Ko)"]):
+            for nom, g in d.groupby("algo"):
+                ax.plot(g["n"], g[col], "o-", label=nom)
+            ax.set_xlabel("Taille du tableau n")
+            ax.set_ylabel(titre)
+            ax.set_yscale("log")
+            ax.set_title(f"{titre} - donnees {type_donnees}")
+        axes[0].legend()
+        plt.tight_layout()
+        plt.savefig(f"graphique_benchmark_{type_donnees}.png", dpi=200)
+        plt.close(fig)
+    print("Fichiers : resultats_benchmark.csv, graphique_benchmark_<type>.png")
 
 
 if __name__ == "__main__":
