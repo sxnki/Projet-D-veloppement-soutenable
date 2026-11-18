@@ -1,11 +1,11 @@
 {
-  "date": "2026-11-17T11:02:02",
+  "date": "2026-11-18T14:38:34",
   "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD",
   "systeme": "Windows-11-10.0.26300-SP0",
   "python": "3.13.14 (tags/v3.13.14:fd17997, Jun 10 2026, 13:03:48) [MSC v.1944 64 bit (AMD64)]",
   "rapl": true,
   "source_energie": "Compteur d'énergie Windows (Energy Meter / RAPL)",
-  "puissance_repos_W": 42.34248246397504,
+  "puissance_repos_W": 39.67452777383654,
   "parametres": {
     "tailles": [
       500,
@@ -18,7 +18,7 @@
     "duree_min": 1.0,
     "repos_s": 10.0,
     "puissance_estimee": 15.0,
-    "facteur_joules": 3.6e-09,
+    "facteur_joules": null,
     "chemin_windows": null,
     "sortie": "data"
   }

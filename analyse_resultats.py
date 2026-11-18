@@ -62,6 +62,9 @@ def main():
     out = lambda nom: os.path.join(args.sortie, nom)
 
     df = pd.read_csv(args.fichier)
+    if "energie_nette_J" in df.columns and (df["energie_nette_J"] <= 0).any():
+        print(f"ATTENTION : {(df['energie_nette_J'] <= 0).sum()} énergies nettes <= 0 dans {args.fichier} : "
+              "puissance de repos mal mesurée, utilisez seulement energie_J (brute).\n")
     df_ref = df[df["algo"] == REFERENCE].copy()
     df = df[df["algo"] != REFERENCE].copy()
 

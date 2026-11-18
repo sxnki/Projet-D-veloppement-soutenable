@@ -4,7 +4,7 @@ Extrapolation de l'énergie mesurée à un usage réel, émissions de CO2 associ
 Usage :
     python impact.py
     python impact.py --n 4000 --donnees aleatoire --tris-par-jour 1000000
-    python impact.py --colonne energie_nette_J     # si le benchmark a mesuré la puissance au repos
+    python impact.py --colonne energie_J           # énergie brute (par défaut : nette si disponible)
 
 ATTENTION : le scénario (nombre de tris par jour, taille des tableaux) est une HYPOTHÈSE de travail
 pour donner un ordre de grandeur, pas une mesure. Modifiez-la pour votre cas d'usage.
@@ -40,7 +40,8 @@ def parser():
     p.add_argument("--intensites", type=float, nargs="+", default=[19.6, 51.9],
                    help="intensité carbone de l'électricité (gCO2e/kWh)")
     p.add_argument("--reference", default=REFERENCE_PAR_DEFAUT, help="algorithme de la situation de référence")
-    p.add_argument("--colonne", default="energie_J", help="énergie utilisée : energie_J ou energie_nette_J")
+    p.add_argument("--colonne", default=None,
+                   help="énergie utilisée : energie_nette_J (par défaut si présente : surplus dû au tri) ou energie_J (brute)")
     p.add_argument("--sortie", default="results")
     p.add_argument("--figures", default="figures")
     return p
@@ -52,6 +53,11 @@ def main():
     os.makedirs(args.figures, exist_ok=True)
 
     df = pd.read_csv(args.fichier)
+    if args.colonne is None:
+        net_ok = "energie_nette_J" in df.columns and (df["energie_nette_J"] > 0).all()
+        args.colonne = "energie_nette_J" if net_ok else "energie_J"
+        if "energie_nette_J" in df.columns and not net_ok:
+            print("Énergie nette inutilisable (valeurs <= 0) : l'énergie brute est utilisée.")
     if args.colonne not in df.columns:
         raise SystemExit(f"Colonne {args.colonne} absente de {args.fichier} "
                          "(energie_nette_J n'existe que si le benchmark a pu lire RAPL).")
@@ -93,12 +99,15 @@ def main():
         pos = [x + k * largeur for x in range(len(algos))]
         barres = ax.bar(pos, vals, width=largeur, label=f"{i:g} gCO₂e/kWh")
         for b, v in zip(barres, vals):
-            ax.annotate(f"{v:.3g}", (b.get_x() + b.get_width() / 2, v), ha="center", va="bottom", fontsize=8)
+            etiquette = f"{v:,.0f}".replace(",", " ") if v >= 1000 else f"{v:.3g}"
+            ax.annotate(etiquette, (b.get_x() + b.get_width() / 2, v), ha="center", va="bottom", fontsize=8)
     ax.set_xticks([x + largeur * (len(args.intensites) - 1) / 2 for x in range(len(algos))])
     ax.set_xticklabels(algos, rotation=15)
     ax.set_yscale("log")
     ax.set_ylabel("Émissions (gCO₂e par an)")
-    ax.set_title(f"{args.tris_par_jour:,.0f} tris/jour de {args.n} éléments (scénario hypothétique)".replace(",", " "))
+    nature = "énergie nette" if args.colonne == "energie_nette_J" else "énergie brute"
+    tris = f"{args.tris_par_jour:,.0f}".replace(",", " ")
+    ax.set_title(f"{tris} tris/jour de {args.n} éléments, {nature} (scénario hypothétique)", fontsize=11)
     ax.legend(title="Intensité du réseau")
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()

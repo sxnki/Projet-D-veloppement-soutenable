@@ -8,7 +8,7 @@ Usage :
 
 Énergie :
 - Windows : compteur « Energy Meter » (voir rapl_windows.py) : lancer d'abord diagnostic_windows.py,
-  puis  py benchmark_energie.py --facteur-joules <valeur donnée par le diagnostic>
+  (unité supposée en picowatt-heure par défaut ; --facteur-joules <valeur> pour la changer)
 - Si RAPL est lisible (Linux, Intel/AMD) : mesure réelle en joules (énergie du « package » CPU).
   Une puissance de repos est mesurée au départ, ce qui permet de donner aussi une énergie NETTE
   (énergie brute - puissance de repos x temps) en plus de l'énergie brute.
@@ -35,6 +35,8 @@ import pandas as pd
 
 RAPL = "/sys/class/powercap/intel-rapl:0/energy_uj"
 RAPL_MAX = "/sys/class/powercap/intel-rapl:0/max_energy_range_uj"
+
+FACTEUR_WINDOWS_DEFAUT = 3.6e-9   # picowatt-heure -> joules (unité du compteur Windows, vérifiable avec diagnostic_windows.py)
 
 TYPES_DONNEES = ["aleatoire", "trie", "inverse", "presque_trie"]
 TYPES_ALEATOIRES = {"aleatoire", "presque_trie"}   # plusieurs instances (graines) pour ceux-là
@@ -125,9 +127,9 @@ def creer_source(facteur_joules, chemin_windows):
         pass
     if platform.system() == "Windows":
         if facteur_joules is None:
-            print("Windows : compteur d'énergie non utilisé car --facteur-joules n'est pas donné.\n"
-                  "          Lancez d'abord :  py diagnostic_windows.py")
-            return None
+            facteur_joules = FACTEUR_WINDOWS_DEFAUT
+            print(f"Windows : unité du compteur supposée en picowatt-heure (facteur {facteur_joules:g} J par unité).\n"
+                  "          Pour la vérifier sur votre machine :  py diagnostic_windows.py")
         try:
             from rapl_windows import SourceWindows
             return SourceWindows(facteur_joules, chemin_windows)
@@ -222,7 +224,7 @@ def parser():
     p.add_argument("--puissance-estimee", type=float, default=15.0,
                    help="puissance (W) supposée si RAPL est indisponible")
     p.add_argument("--facteur-joules", type=float, default=None,
-                   help="Windows : joules par unité du compteur d'énergie (donné par diagnostic_windows.py)")
+                   help="Windows : joules par unité du compteur d'énergie (défaut 3.6e-9 = picowatt-heure ; vérifier avec diagnostic_windows.py)")
     p.add_argument("--chemin-windows", default=None,
                    help="Windows : chemin PDH du compteur d'énergie, si le chemin par défaut ne fonctionne pas")
     p.add_argument("--sortie", default="data", help="dossier de sortie")
@@ -274,7 +276,13 @@ def main():
                       f"{ligne['memoire_Ko']:.0f} Ko")
 
     chemin = os.path.join(args.sortie, "resultats_benchmark.csv")
-    pd.DataFrame(lignes).to_csv(chemin, index=False)
+    resultats = pd.DataFrame(lignes)
+    resultats.to_csv(chemin, index=False)
+    if rapl and (resultats["energie_nette_J"] <= 0).any():
+        n_neg = int((resultats["energie_nette_J"] <= 0).sum())
+        print(f"\nATTENTION : {n_neg} énergies nettes sont <= 0. La puissance de repos mesurée ({p_repos:.1f} W) est "
+              "trop élevée : la machine n'était sans doute pas au repos pendant la mesure initiale.\n"
+              "energie_nette_J est inutilisable ; relancez en fermant tous les programmes (energie_J reste valable).")
 
     meta = {
         "date": datetime.now().isoformat(timespec="seconds"),

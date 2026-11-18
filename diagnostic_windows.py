@@ -32,13 +32,13 @@ def deviner_unite(taux_repos, taux_charge, pw_repos=None, pw_charge=None):
     resultats = []
     for nom, f in UNITES_ENERGIE:
         p0, p1 = taux_repos * f, taux_charge * f
-        if not (0.3 <= p0 <= 40 and 3 <= p1 <= 300 and p1 > 1.2 * p0):
+        if not (0.3 <= p0 <= 150 and 3 <= p1 <= 400 and p1 > 1.1 * p0):
             continue
         if pw_charge is None:
             resultats.append((nom, f, p0, p1, None))
             continue
         for nom_p, g in UNITES_PUISSANCE:
-            if abs(p1 - pw_charge * g) <= 0.35 * p1 and (pw_repos is None or abs(p0 - pw_repos * g) <= 0.5 * max(p0, 1)):
+            if abs(p1 - pw_charge * g) <= 0.35 * p1:          # recoupement sur la phase de charge
                 resultats.append((nom, f, p0, p1, nom_p))
     return resultats
 
@@ -84,7 +84,12 @@ def rapport(taux_repos, taux_charge, pw_repos, pw_charge, intervalles):
         nom, f, p0, p1, nom_p = candidats[0]
         print(f"\nUnité probable du compteur d'énergie : {nom} (puissance déduite : {p0:.1f} W au repos, {p1:.1f} W en charge)")
         if nom_p:
-            print(f"Compteur de puissance en {nom_p} : cohérent.")
+            print(f"Compteur de puissance en {nom_p} : cohérent sous charge.")
+            g = dict(UNITES_PUISSANCE)[nom_p]
+            if pw_repos is not None and abs(p0 - pw_repos * g) > 0.3 * p0:
+                print(f"Note : au repos, le compteur d'énergie donne {p0:.1f} W contre {pw_repos * g:.1f} W pour le "
+                      "compteur de puissance (moyenne glissante de Windows, plus lente). Écart sans conséquence "
+                      "pour le benchmark, qui n'utilise que le compteur d'énergie.")
         print(f"\n>>> Utilisez :  py benchmark_energie.py --facteur-joules {f:g}")
         res = f
     elif not candidats:

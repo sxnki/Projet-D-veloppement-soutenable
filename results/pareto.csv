@@ -1,9 +1,11 @@
 criteres,donnees,n,algo
 energie_temps_memoire,aleatoire,500,insertion
+energie_temps_memoire,aleatoire,500,fusion
 energie_temps_memoire,aleatoire,500,rapide
 energie_temps_memoire,aleatoire,1000,insertion
 energie_temps_memoire,aleatoire,1000,rapide
 energie_temps_memoire,aleatoire,2000,insertion
+energie_temps_memoire,aleatoire,2000,fusion
 energie_temps_memoire,aleatoire,2000,rapide
 energie_temps_memoire,aleatoire,4000,insertion
 energie_temps_memoire,aleatoire,4000,rapide
@@ -28,10 +30,12 @@ energie_temps_memoire,trie,1000,insertion
 energie_temps_memoire,trie,2000,insertion
 energie_temps_memoire,trie,4000,insertion
 energie_memoire,aleatoire,500,insertion
+energie_memoire,aleatoire,500,fusion
 energie_memoire,aleatoire,500,rapide
 energie_memoire,aleatoire,1000,insertion
 energie_memoire,aleatoire,1000,rapide
 energie_memoire,aleatoire,2000,insertion
+energie_memoire,aleatoire,2000,fusion
 energie_memoire,aleatoire,2000,rapide
 energie_memoire,aleatoire,4000,insertion
 energie_memoire,aleatoire,4000,rapide

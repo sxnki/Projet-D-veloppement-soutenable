@@ -6,7 +6,7 @@ Usage :
     python graphiques.py --fichier data/resultats_benchmark.csv --sortie figures
 
 Figures produites :
-- benchmark_<type>.png        temps, énergie, mémoire en fonction de n (échelles log-log), un fichier par type de données
+- benchmark_<type>.png        temps, énergie (brute), mémoire en fonction de n (échelles log-log), un fichier par type de données
 - synthese_energie_memoire.png compromis énergie / mémoire à la plus grande taille, pour les 4 types de données
 """
 import argparse
@@ -31,7 +31,7 @@ LIBELLES = {"bulles": "Tri à bulles", "insertion": "Tri par insertion", "fusion
 TYPES = {"aleatoire": "données aléatoires", "trie": "données triées",
          "inverse": "données inversées", "presque_trie": "données presque triées"}
 PANNEAUX = [("temps_s", "Temps par tri (s)"),
-            ("energie_J", "Énergie par tri (J)"),
+            ("energie_J", "Énergie brute par tri (J)"),
             ("memoire_Ko", "Mémoire de pointe (Ko)")]
 
 
@@ -84,7 +84,7 @@ def figure_synthese(df, chemin):
         ax.set_xlabel("Mémoire de pointe (Ko)")
         ax.set_title(titre.capitalize())
         ax.grid(True, alpha=0.3)
-    axes[0].set_ylabel(f"Énergie par tri (J), n = {nmax}")
+    axes[0].set_ylabel(f"Énergie brute par tri (J), n = {nmax}")
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=len(labels), frameon=False,
                bbox_to_anchor=(0.5, -0.02))
