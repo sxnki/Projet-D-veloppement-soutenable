@@ -1,148 +1,173 @@
 # Coût énergétique des algorithmes de tri : temps, énergie, mémoire
 
-Projet informatique : mesure et comparaison de cinq tris (bulles, insertion, fusion, rapide, `sorted` de Python/Timsort)
-selon trois indicateurs (temps, énergie, mémoire), quatre types de données (aléatoires, triées, inversées, presque triées)
-et quatre tailles (n = 500 à 4000). Les quatre tris écrits en Python pur sont comparés entre eux ; `sorted` (écrit en C)
-sert de référence à part. La situation de référence « naïve » est le tri à bulles.
+Projet informatique : mesure et comparaison de cinq tris — bulles, insertion, fusion, rapide et `sorted()` de Python (Timsort) — selon trois indicateurs (temps, énergie, mémoire), quatre types de données (aléatoires, triées, inversées, presque triées) et quatre tailles (`n = 500` à `4 000`).
+
+Les quatre tris écrits en Python pur sont comparés entre eux. `sorted()` (implémenté en C) est présenté séparément comme référence. Le tri à bulles sert de référence « naïve ».
 
 ## Reproduire les résultats
 
 ```bash
 pip install -r requirements.txt
-python benchmark_energie.py             # mesures (environ 30 min) -> data/resultats_benchmark.csv + data/metadonnees.json
-python analyse_resultats.py             # normalisation, Pareto, pentes -> results/
-python graphiques.py                    # figures/benchmark_*.png, figures/synthese_energie_memoire.png
-python impact.py --colonne energie_nette_J    # extrapolation à un usage réel -> results/impact.csv, figures/impact_emissions.png
+python benchmark_energie.py
+python analyse_resultats.py
+python graphiques.py
+python impact.py --colonne energie_nette_J
 ```
 
-Le dossier `data/` contient les mesures qui ont servi aux résultats ci-dessous : les trois dernières commandes
-s'exécutent sans refaire le benchmark et sans droits particuliers. **À chaque changement de `data/resultats_benchmark.csv`,
-relancer ces trois commandes dans cet ordre.**
+- `benchmark_energie.py` réalise les mesures (environ 30 minutes selon la machine) et produit `data/resultats_benchmark.csv` et `data/metadonnees.json`.
+- `analyse_resultats.py` produit les analyses dans `results/`.
+- `graphiques.py` produit les figures dans `figures/`.
+- `impact.py` extrapole les émissions à partir de l'énergie nette et produit `results/impact.csv` et `figures/impact_emissions.png`.
 
-### Mesure de l'énergie selon le système
+Le dossier `data/` contient les mesures utilisées pour les résultats présentés ici. Les trois dernières commandes peuvent être relancées sans refaire le benchmark. **Après chaque modification de `data/resultats_benchmark.csv`, relancer les trois dernières commandes dans cet ordre.** Pour obtenir de nouvelles mesures, relancer d'abord le benchmark, puis les trois scripts d'analyse.
 
-Le benchmark détecte le système tout seul :
+## Mesure de l'énergie selon le système
 
-- **Linux** : compteur RAPL (`/sys/class/powercap/intel-rapl:0`). Lancer avec `sudo` (lecture réservée à root).
-- **Windows** : compteur « Energy Meter » (sur un Windows en français : « Compteur Énergie »), lu par `rapl_windows.py`.
-  Vérification : `typeperf -qx | Select-String RAPL` doit afficher `RAPL_Package0_PKG`. L'unité du compteur est supposée
-  être le picowatt-heure ; `py diagnostic_windows.py` (facultatif, environ 15 s) la vérifie sur une autre machine.
-- **Autre cas** (macOS, compteur absent) : estimation (puissance supposée x temps), colonne `energie_mesuree = False`.
-  Ce n'est plus une mesure et il faut le signaler.
+Le benchmark sélectionne une source d'énergie selon le système :
 
-Pendant les mesures : branchez le secteur, fermez **tous** les autres programmes (jeu, navigateur, antivirus en analyse),
-ne touchez pas à l'ordinateur. Le benchmark mesure d'abord la puissance au repos ; si elle est trop proche de la puissance sous
-charge, il l'indique (énergies nettes négatives).
+- **Linux** : compteur RAPL (`/sys/class/powercap/intel-rapl:0`). L'accès peut nécessiter des droits élevés selon la configuration.
+- **Windows** : compteur « Energy Meter » / compteur d'énergie Windows, lu par `rapl_windows.py`. La présence du compteur peut être vérifiée avec `typeperf -qx | Select-String RAPL`. L'unité du compteur est convertie en joules avec le facteur prévu par le programme ; le script `py diagnostic_windows.py` permet de contrôler cette conversion sur la machine utilisée.
+- **Autre cas** (par exemple macOS ou absence de compteur compatible) : estimation à partir d'une puissance supposée multipliée par la durée. Dans ce cas, `energie_mesuree = False` : il s'agit d'une estimation et non d'une mesure directe.
+
+Pour limiter les perturbations, brancher l'ordinateur sur secteur, fermer les applications non nécessaires et éviter toute interaction pendant le benchmark. Le programme mesure d'abord la puissance au repos. Une activité de fond variable peut affecter l'estimation de l'énergie nette.
 
 ## Protocole de mesure
 
-- **Temps et énergie** : chaque mesure répète le tri pendant au moins 1 s (le compteur est trop grossier pour un seul tri de
-  quelques microsecondes) et ramène le résultat à une exécution. On retient la médiane de 10 mesures par instance de données,
-  avec 3 instances pour les jeux aléatoires et presque triés. Le ramasse-miettes est désactivé pendant chaque mesure, après une
-  exécution de chauffe.
-- **Énergie brute** (`energie_J`) : tout ce que consomme le processeur (package) pendant le tri, y compris sa consommation de base.
-- **Énergie nette** (`energie_nette_J`) : énergie brute moins (puissance au repos x temps), soit le surplus dû au tri.
-  Elle est moins stable que la brute (différence de deux grandeurs proches) : à lire comme un ordre de grandeur.
-- **Mémoire** : pic d'allocation mesuré par `tracemalloc`, séparément du temps (l'outil ralentit le code), une seule fois par combinaison (sur la première instance de données). Cela compte les listes créées
-  (copie du tableau, listes intermédiaires), pas les entiers eux-mêmes.
-- **Données** : instances générées avec une graine fixée.
+- **Temps et énergie** : chaque mesure répète le tri pendant au moins une seconde, puis ramène le résultat à une exécution. Cette répétition permet de mieux exploiter la résolution du compteur pour les tris très courts. La médiane de 10 mesures est retenue par instance de données ; trois instances sont utilisées pour les jeux aléatoires et presque triés. Une exécution de chauffe précède la mesure et le ramasse-miettes est désactivé pendant celle-ci.
+- **Énergie brute** (`energie_J`) : énergie mesurée pour le package CPU pendant l'exécution, incluant sa consommation de base.
+- **Énergie nette** (`energie_nette_J`) : estimation du surplus d'énergie associé au tri, calculée par soustraction de l'énergie correspondant à la puissance au repos multipliée par la durée :
 
-## Conditions de mesure du jeu de données fourni
+  `E_nette = E_brute - (P_repos × durée)`
 
-- Machine : AMD Ryzen 7 5800X (AMD64 Family 25 Model 33 Stepping 2), 48 Go de RAM DDR4-3200, Windows 11, Python 3.13.14.
-- Énergie : compteur d'énergie Windows (RAPL, package CPU). Puissance au repos mesurée : 43,7 W.
-- Un seul run complet est conservé (`metadonnees.json` en donne la date et les paramètres).
+  Cette estimation suppose que la puissance de fond reste relativement stable. Elle est plus sensible au bruit que l'énergie brute, car elle résulte de la différence entre deux valeurs proches ; elle doit être interprétée comme un ordre de grandeur, surtout pour les tris très rapides.
+
+- **Mémoire** : pic d'allocation Python mesuré avec `tracemalloc`, séparément du chronométrage (car cet outil ralentit l'exécution). La mesure est effectuée une fois par combinaison. Elle porte sur les allocations Python suivies par `tracemalloc` — notamment les listes et listes intermédiaires — et non sur la mémoire physique totale du processus.
+- **Données** : les instances sont générées avec des graines fixées afin de rendre les jeux de données reproductibles.
+
+## Conditions du jeu de données fourni
+
+- Machine : AMD Ryzen 7 5800X (AMD64 Family 25 Model 33 Stepping 2), 48 Go de RAM DDR4-3200.
+- Système : Windows 11.
+- Python : 3.13.14.
+- Source d'énergie : compteur d'énergie Windows (Energy Meter / RAPL, package CPU).
+- Puissance au repos mesurée pour ce jeu de données : **51,05 W**, pendant 10 secondes.
+- Un seul benchmark complet est conservé. La date et les paramètres exacts figurent dans `data/metadonnees.json`.
+
+La valeur de 51,05 W est propre à cette exécution et à l'état de la machine au moment de la mesure ; elle ne doit pas être considérée comme une constante valable sur une autre machine ou à un autre moment.
 
 ## Lien avec l'article de référence
 
-Le projet reprend la démarche de Pereira et al., *Energy Efficiency across Programming Languages* (SLE 2017) :
-mesure de l'énergie par RAPL, 10 répétitions par mesure, temps et mémoire mesurés en parallèle, valeurs normalisées par rapport
-au meilleur (leur Table 4) et ensembles de Pareto (leur Table 5), appliqués à des **algorithmes de tri** plutôt qu'à des langages.
+Le projet reprend la démarche de Pereira et al., _Energy Efficiency across Programming Languages: How Do Energy, Time, and Memory Relate?_ (SLE 2017) : mesure de l'énergie par RAPL, répétitions, mesure du temps et de la mémoire, normalisation par rapport au meilleur résultat et analyse des ensembles de Pareto. La démarche est ici appliquée à des **algorithmes de tri**, et non à une comparaison de langages.
 
-| Point | Article | Ce projet |
-|---|---|---|
-| Énergie | RAPL, CPU + DRAM, processus entier | RAPL, package CPU, tri mesuré dans le processus |
-| Temps et énergie liés ? | Pas toujours : la puissance varie d'un langage à l'autre | Oui pour des tris dans un même langage : puissance quasi constante sur nos essais (environ 62 W en brut, 18 W en net) |
-| Pareto énergie/temps | Se réduit presque toujours à un élément | Même constat ; le compromis apparaît avec la mémoire |
-| Mémoire | Pic mesuré par `time` ; faible corrélation avec l'énergie DRAM (Spearman 0,21) | Pic mesuré par `tracemalloc` ; énergie DRAM non mesurée |
-| Compilé contre interprété | Énergie moyenne environ 20 fois plus élevée en interprété | `sorted` (C) contre tri rapide Python : environ 20 fois moins d'énergie, mais algorithmes différents, donc indicatif seulement |
+| Point                | Article                                 | Ce projet                                                                                                                                                                    |
+| -------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Énergie              | RAPL, CPU + DRAM, processus entier      | Compteur d'énergie du package CPU                                                                                                                                            |
+| Objet comparé        | Langages et environnements d'exécution  | Algorithmes de tri, principalement dans un même langage                                                                                                                      |
+| Pareto énergie/temps | Analyse des compromis entre indicateurs | Le classement énergie/temps des quatre tris Python est identique dans les 16 combinaisons type de données × taille                                                           |
+| Mémoire              | Mesure du pic mémoire                   | Pic des allocations Python suivi par `tracemalloc` ; l'énergie DRAM n'est pas mesurée                                                                                        |
+| Compilé / interprété | Comparaison de langages                 | `sorted()` est implémenté en C, tandis que les quatre autres tris sont écrits en Python ; cette comparaison est donc indicative et ne compare pas uniquement les algorithmes |
 
-Ces résultats ne se contredisent pas : l'article compare des langages (donc des runtimes différents), ici on compare des algorithmes
-dans un seul langage, avec une charge de calcul pur sur un cœur.
+Les résultats ne sont pas directement interchangeables avec ceux de l'article : les périmètres de mesure, les programmes et les environnements sont différents.
 
-## Résultats principaux (`data/`, `results/`)
+## Résultats principaux du dernier CSV
 
-| Constat | Valeur |
-|---|---|
-| Puissance moyenne observée pendant les tris | environ 62 W en brut (57 à 69 W), environ 18 W en net ; énergie ≈ puissance x temps (corrélation log-log r = 0,9999) |
-| Classements énergie et temps | identiques dans 100 % des cas pour les 4 tris Python |
-| Complexité observée (pente log-log du temps) | bulles ≈ 2,1 ; insertion ≈ 2,05 à 2,1 (≈ 1,05 sur données triées) ; fusion et rapide ≈ 1,1 |
-| Plus économe, Python pur, n = 4000 | rapide (données aléatoires, inversées, presque triées) ; insertion (données triées) |
-| Bulles contre rapide, n = 4000, données aléatoires | environ 102 fois plus d'énergie en brut (30,3 J contre 0,30 J), environ 100 fois en net |
-| `sorted` contre rapide, n = 4000, données aléatoires | environ 20 fois moins d'énergie |
-| Compromis mémoire (n = 4000, aléatoire) | fusion 126 Ko et rapide 90 Ko, contre 31 Ko pour bulles et insertion |
-| Non dominés énergie/mémoire (n = 4000) | insertion et rapide ; insertion seul sur données triées |
+Les valeurs ci-dessous concernent `n = 4 000`. Les énergies nettes sont calculées avec la puissance au repos de **51,05 W** enregistrée dans les métadonnées.
 
-Un tri plus rapide consomme donc proportionnellement moins d'énergie : sur cette charge, énergie et temps ne sont pas deux
-critères indépendants. Le vrai compromis se situe entre énergie et mémoire, et dépend des données : sur données triées,
-l'insertion bat le tri rapide.
+### Classement énergétique selon les données
 
-## Lien avec le développement soutenable et effet rebond
+| Type de données | Tri Python pur le moins énergivore | Énergie nette par tri |
+| --------------- | ---------------------------------- | --------------------: |
+| Aléatoires      | Rapide                             |             0,02341 J |
+| Inversées       | Fusion                             |            0,007434 J |
+| Presque triées  | Rapide                             |            0,007977 J |
+| Déjà triées     | Insertion                          |            0,000604 J |
 
-L'énergie d'un seul tri est minuscule (de l'ordre de 0,1 J pour les bons algorithmes, à n = 4000), l'enjeu apparaît à l'échelle
-d'un usage répété. `impact.py` extrapole à un scénario **hypothétique** (par défaut 1 million de tris par jour de 4000 éléments)
-et convertit en émissions avec l'intensité carbone du réseau électrique français : 19,6 gCO₂e/kWh (RTE, émissions directes, 2025)
-et 51,9 gCO₂e/kWh (ADEME, Base Carbone, cycle de vie).
+`sorted()` est le moins énergivore des cinq algorithmes dans les quatre types de données mesurés. Il reste présenté à part, car il est implémenté en C.
 
-| Algorithme (énergie nette) | Énergie par tri | Émissions par an |
-|---|---|---|
-| Bulles | 8,05 J | 16 à 42 kg CO₂e |
-| Insertion | 3,82 J | 7,6 à 20 kg |
-| Fusion | 0,092 J | 184 à 486 g |
-| Rapide | 0,081 J | 161 à 425 g |
-| `sorted` (C) | 0,0036 J | 7 à 19 g |
+### Comparaison sur données aléatoires
 
-En énergie brute, les valeurs sont environ 3,8 fois plus élevées (par exemple environ 60 à 159 kg par an pour le tri à bulles) :
-l'énergie nette est ce que le tri ajoute, la brute est une borne haute. Dans les deux cas, passer du tri à bulles au tri rapide
-divise l'énergie par environ 100.
+| Algorithme           | Énergie brute par tri | Énergie nette par tri | Mémoire de pointe |
+| -------------------- | --------------------: | --------------------: | ----------------: |
+| Bulles               |              28,539 J |               2,665 J |          31,51 Ko |
+| Insertion            |              13,651 J |               1,350 J |          31,39 Ko |
+| Fusion               |               0,343 J |             0,04962 J |         126,06 Ko |
+| Rapide               |               0,260 J |             0,02341 J |          90,30 Ko |
+| `sorted()` (Timsort) |             0,01305 J |            0,000832 J |          46,82 Ko |
 
-**Effet rebond** : un gain de facteur g est annulé si l'usage est multiplié par g ou plus. Le fichier `results/impact.csv` donne ce
-seuil pour chaque algorithme (environ 100 pour le tri rapide contre le tri à bulles). Un tri plus économe peut aussi encourager à
-trier plus souvent ou de plus grands volumes. Ces valeurs absolues sont très faibles à l'échelle du numérique : l'intérêt du
-résultat est surtout de montrer l'écart entre algorithmes, pas un gain climatique à lui seul.
+Sur ces données, le tri à bulles consomme environ **110 fois** plus d'énergie brute et **114 fois** plus d'énergie nette que le tri rapide. `sorted()` consomme environ **20 fois moins d'énergie brute** que le tri rapide.
+
+### Temps, énergie et mémoire
+
+Pour les quatre tris Python pur, le classement selon le temps et selon l'énergie brute est identique dans les 16 combinaisons de type de données et de taille du CSV. Sur cette charge de travail, le temps et l'énergie brute sont donc fortement liés ; ils ne constituent pas deux critères indépendants dans les classements observés.
+
+Le compromis apparaît notamment avec la mémoire : sur données aléatoires à `n = 4 000`, fusion et rapide utilisent davantage de mémoire de pointe que bulles et insertion. L'insertion présente ici la plus faible allocation mesurée parmi les quatre tris Python pur, mais son avantage mémoire sur le tri à bulles est très faible (environ 0,13 Ko).
+
+Les pentes log-log du temps décrivent le comportement observé sur les tailles testées ; elles ne constituent pas une preuve de complexité asymptotique. Les tailles étudiées restent modestes (`n ≤ 4 000`).
+
+## Lien avec le développement soutenable et émissions estimées
+
+L'énergie d'un tri isolé est faible. Pour illustrer l'effet d'un usage répété, `impact.py` extrapole les mesures à un scénario **hypothétique** d'un million de tris de 4 000 éléments par jour pendant 365 jours.
+
+Les émissions sont calculées à partir de l'énergie nette par tri :
+
+`CO₂e (g/an) = [E_nette (J) × nombre annuel de tris / 3 600 000] × intensité carbone (gCO₂e/kWh)`
+
+Deux intensités carbone sont utilisées dans le scénario :
+
+- **19,6 gCO₂e/kWh** : valeur attribuée au bilan électrique RTE 2025 dans le projet ;
+- **51,9 gCO₂e/kWh** : valeur attribuée à la Base Carbone de l'ADEME dans le projet.
+
+| Algorithme           | Énergie nette par tri | Émissions annuelles estimées |
+| -------------------- | --------------------: | ---------------------------: |
+| Bulles               |               2,665 J |         5,30 à 14,02 kg CO₂e |
+| Insertion            |               1,350 J |          2,68 à 7,10 kg CO₂e |
+| Fusion               |             0,04962 J |            98,6 à 261 g CO₂e |
+| Rapide               |             0,02341 J |            46,5 à 123 g CO₂e |
+| `sorted()` (Timsort) |            0,000832 J |           1,65 à 4,38 g CO₂e |
+
+Ces résultats sont des extrapolations, pas des émissions directement mesurées. Ils ne représentent que l'énergie du package CPU mesurée par le compteur, et non l'empreinte environnementale complète de l'ordinateur ou du service numérique.
+
+**Effet rebond :** un gain d'énergie par opération peut être annulé si le nombre d'opérations augmente suffisamment. À titre d'exemple, le rapport d'environ 114 entre l'énergie nette du tri à bulles et celle du tri rapide sur données aléatoires indique qu'il faudrait multiplier le nombre de tris rapides par environ 114 pour atteindre la même énergie nette totale, dans les hypothèses de ce benchmark. Ce scénario ne prédit pas un comportement réel des utilisateurs.
+
+## Pourquoi les valeurs peuvent-elles varier ?
+
+- **Énergie brute ou nette** : l'énergie brute inclut la consommation du package CPU pendant le tri ; l'énergie nette retire l'estimation de la consommation au repos. Elles répondent à deux questions différentes.
+- **Puissance au repos** : elle est mesurée avant le benchmark et dépend de l'état de la machine, des processus en arrière-plan, du mode d'alimentation et de la température. La valeur de 51,05 W n'est pas une constante universelle.
+- **Puissance moyenne pendant le tri** : elle varie selon l'algorithme et la durée. Le rapport énergie/durée fournit une puissance moyenne sur la période mesurée, pas une puissance instantanée.
+- **Données et taille** : les chemins d'exécution changent selon que la liste est aléatoire, triée, inversée ou presque triée. Les comparaisons doivent porter sur le même type de données et le même `n`.
+- **Machine, système et Python** : le processeur, le système d'exploitation, la version de Python et l'état du système peuvent modifier les résultats.
+- **Compteur Windows** : les résultats dépendent de la résolution et de l'échantillonnage du compteur ainsi que de la conversion de son unité. Le diagnostic de l'unité réduit le risque d'erreur de conversion, mais ne supprime pas les incertitudes de mesure.
+- **`sorted()`** : cette fonction est implémentée en C et ses durées sont très courtes. Son énergie par tri est donc particulièrement sensible à la résolution du compteur et au protocole de répétition. Elle sert de référence distincte, et non de comparaison entre deux implémentations écrites dans le même langage.
 
 ## Limites
 
-- Tous les résultats viennent d'un seul run sous Windows ; la lecture RAPL sous Linux est prévue par le code mais n'a pas été validée sur ces mesures. Une seule machine, un seul système, une seule version de Python ; un seul run conservé : la reproductibilité n'est pas démontrée
-  par ce dépôt (le bruit de mesure est donné par les écarts-types du CSV, 8 à 9 % en moyenne sur l'énergie, jusqu'à 20 %).
-- Sur AMD, RAPL est une estimation interne du processeur, pas une mesure physique à la prise.
-- Énergie du processeur seulement : pas de RAM, de refroidissement, de pertes de centre de données ni de fabrication du matériel.
-- Mesures sous Windows, donc sensibles à l'activité de fond : la médiane limite l'effet, mais les petits écarts (par exemple entre
-  fusion et rapide) ne sont pas significatifs.
-- Les mesures de `sorted` durent quelques microsecondes : elles sont les plus sensibles au bruit, et sa pente log-log (1,57 sur
-  données aléatoires) ne doit pas être lue comme une complexité.
-- Tailles testées modestes (n <= 4000) ; les écarts entre complexités s'accentuent avec n.
-- Le tri `sorted` est écrit en C : l'écart avec les tris Python est surtout un effet du langage, il est donc isolé de l'analyse.
-- Le scénario d'extrapolation est une hypothèse de travail, et les intensités carbone dépendent du périmètre retenu et de l'année.
+- Les résultats présentés proviennent d'un seul benchmark complet sur une seule machine, sous Windows, avec une seule version de Python. Ils ne démontrent pas à eux seuls la reproductibilité sur d'autres machines.
+- Sur AMD, la valeur fournie par le compteur d'énergie est une estimation du package CPU ; ce n'est pas une mesure de la consommation électrique à la prise.
+- La mesure ne couvre pas la RAM, le refroidissement, l'alimentation, l'écran, les périphériques, la fabrication du matériel ni l'infrastructure d'un centre de données.
+- La mesure de la puissance au repos est réalisée une seule fois avant les essais. Les variations de l'activité en arrière-plan peuvent donc affecter l'énergie nette, surtout pour les algorithmes très rapides.
+- `tracemalloc` mesure les allocations Python suivies par cet outil, pas toute la mémoire physique du processus.
+- Les tailles testées sont modestes (`n ≤ 4 000`) ; les résultats ne doivent pas être extrapolés sans précaution à de très grands tableaux.
+- Le scénario d'émissions est hypothétique. Les intensités carbone dépendent de leur source, de leur année et de leur périmètre (émissions directes ou cycle de vie).
 
-## Structure
+## Structure du projet
 
-```
+```text
 benchmark_energie.py     mesures (temps, énergie, mémoire)
 rapl_windows.py          lecture du compteur d'énergie sous Windows
-diagnostic_windows.py    vérification de l'unité du compteur Windows (facultatif)
+diagnostic_windows.py    vérification de l'unité du compteur Windows
 analyse_resultats.py     normalisation, dispersion, puissance, pentes, Pareto
-graphiques.py            figures
-impact.py                extrapolation, émissions, effet rebond
-requirements.txt         dépendances (pandas, numpy, matplotlib)
-data/                    résultats bruts (CSV + métadonnées)
-results/                 tableaux d'analyse
-figures/                 graphiques pour le poster
+graphiques.py             figures
+impact.py                 extrapolation, émissions, effet rebond
+requirements.txt          dépendances (pandas, numpy, matplotlib)
+data/                     résultats bruts (CSV + métadonnées)
+results/                  tableaux d'analyse
+figures/                  figures pour le poster
 ```
 
 ## Sources
 
-- R. Pereira, M. Couto, F. Ribeiro, R. Rua, J. Cunha, J. P. Fernandes, J. Saraiva, *Energy Efficiency across Programming Languages: How Do Energy, Time, and Memory Relate?*, SLE 2017, doi:10.1145/3136014.3136031.
-- RTE, Bilan électrique 2025 (intensité carbone de la production : 19,6 gCO₂e/kWh).
-- ADEME, Base Carbone (électricité, mix de consommation : 51,9 gCO₂e/kWh).
-- Documentation Linux `powercap` / Intel RAPL ; documentation Python (`tracemalloc`, `sorted`/Timsort).
+- R. Pereira, M. Couto, F. Ribeiro, R. Rua, J. Cunha, J. P. Fernandes et J. Saraiva, _Energy Efficiency across Programming Languages: How Do Energy, Time, and Memory Relate?_, SLE 2017, DOI : [10.1145/3136014.3136031](https://doi.org/10.1145/3136014.3136031).
+- RTE, _Bilan électrique 2025_ (valeur d'intensité carbone utilisée dans le projet : 19,6 gCO₂e/kWh).
+- ADEME, _Base Carbone_ (valeur d'intensité carbone utilisée dans le projet : 51,9 gCO₂e/kWh).
+- Documentation Linux `powercap` / Intel RAPL.
+- Documentation Python : `tracemalloc` et `sorted()` / Timsort.

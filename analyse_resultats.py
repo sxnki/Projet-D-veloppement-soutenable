@@ -21,11 +21,11 @@ import numpy as np
 import pandas as pd
 
 REFERENCE = "sorted (Timsort)"
-CRITERES = ["energie_J", "temps_s", "memoire_Ko"]
+CRITERES = ["energie_nette_J", "temps_s", "memoire_Ko"]
 GROUPE = ["donnees", "n"]
 ENSEMBLES = {
     "energie_temps_memoire": CRITERES,
-    "energie_memoire": ["energie_J", "memoire_Ko"],
+    "energie_memoire": ["energie_nette_J", "memoire_Ko"],
 }
 
 
@@ -64,13 +64,13 @@ def main():
     df = pd.read_csv(args.fichier)
     if "energie_nette_J" in df.columns and (df["energie_nette_J"] <= 0).any():
         print(f"ATTENTION : {(df['energie_nette_J'] <= 0).sum()} énergies nettes <= 0 dans {args.fichier} : "
-              "puissance de repos mal mesurée, utilisez seulement energie_J (brute).\n")
+              "puissance de repos mal mesurée, utilisez seulement energie_nette_J (brute).\n")
     df_ref = df[df["algo"] == REFERENCE].copy()
     df = df[df["algo"] != REFERENCE].copy()
 
     for d in (df, df_ref):
-        d["puissance_W"] = d["energie_J"] / d["temps_s"]
-        d["energie_cv_pct"] = 100 * d["energie_std_J"] / d["energie_J"]
+        d["puissance_W"] = d["energie_nette_J"] / d["temps_s"]
+        d["energie_cv_pct"] = 100 * d["energie_std_J"] / d["energie_nette_J"]
         d["temps_cv_pct"] = 100 * d["temps_std_s"] / d["temps_s"]
 
     for c in CRITERES:
@@ -79,11 +79,11 @@ def main():
     cols_norm = [c + "_norm" for c in CRITERES]
     normalise_global = (df.groupby(["donnees", "algo"])[cols_norm]
                         .agg(moyenne_geometrique)
-                        .sort_values(["donnees", "energie_J_norm"]))
+                        .sort_values(["donnees", "energie_nette_J_norm"]))
 
     # --- énergie et temps : redondance ---
-    corr = float(np.corrcoef(np.log(df["energie_J"]), np.log(df["temps_s"]))[0, 1])
-    rang_e = df.groupby(GROUPE)["energie_J"].rank()
+    corr = float(np.corrcoef(np.log(df["energie_nette_J"]), np.log(df["temps_s"]))[0, 1])
+    rang_e = df.groupby(GROUPE)["energie_nette_J"].rank()
     rang_t = df.groupby(GROUPE)["temps_s"].rank()
     concordance = float((rang_e == rang_t).mean())
     puissance = (pd.concat([df, df_ref]).groupby("algo")["puissance_W"]
@@ -94,7 +94,7 @@ def main():
     for (donnees, algo), g in pd.concat([df, df_ref]).groupby(["donnees", "algo"]):
         lignes_pentes.append({"donnees": donnees, "algo": algo,
                               "pente_temps": pente_loglog(g, "temps_s"),
-                              "pente_energie": pente_loglog(g, "energie_J"),
+                              "pente_energie": pente_loglog(g, "energie_nette_J"),
                               "pente_memoire": pente_loglog(g, "memoire_Ko")})
     pentes = pd.DataFrame(lignes_pentes)
 
@@ -126,7 +126,7 @@ def main():
     nmax = df["n"].max()
     print(f"\nClassement en énergie pour n={nmax} (du plus économe au moins économe)\n")
     for donnees, g in df[df["n"] == nmax].groupby("donnees"):
-        print(f"{donnees:<14} {' < '.join(g.sort_values('energie_J')['algo'])}")
+        print(f"{donnees:<14} {' < '.join(g.sort_values('energie_nette_J')['algo'])}")
 
     print("\nPentes log-log du temps (≈2 : quadratique ; ≈1 : quasi-linéaire / n log n)\n")
     print(pentes.pivot(index="algo", columns="donnees", values="pente_temps").round(2).to_string())
@@ -139,7 +139,7 @@ def main():
         aff = df_ref.copy()
         aff["temps_ms"] = aff["temps_s"] * 1000
         print(f"\nRéférence : {REFERENCE} (écrit en C), à part des tris Python\n")
-        print(aff[["donnees", "n", "temps_ms", "energie_J", "memoire_Ko", "puissance_W"]]
+        print(aff[["donnees", "n", "temps_ms", "energie_nette_J", "memoire_Ko", "puissance_W"]]
               .round(4).to_string(index=False))
 
     print(f"\nFichiers écrits dans {args.sortie}/")

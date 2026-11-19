@@ -4,7 +4,7 @@ Extrapolation de l'énergie mesurée à un usage réel, émissions de CO2 associ
 Usage :
     python impact.py
     python impact.py --n 4000 --donnees aleatoire --tris-par-jour 1000000
-    python impact.py --colonne energie_J           # énergie brute (par défaut : nette si disponible)
+    python impact.py --colonne energie_nette_J           # (par défaut : nette si disponible)
 
 ATTENTION : le scénario (nombre de tris par jour, taille des tableaux) est une HYPOTHÈSE de travail
 pour donner un ordre de grandeur, pas une mesure. Modifiez-la pour votre cas d'usage.
@@ -41,7 +41,7 @@ def parser():
                    help="intensité carbone de l'électricité (gCO2e/kWh)")
     p.add_argument("--reference", default=REFERENCE_PAR_DEFAUT, help="algorithme de la situation de référence")
     p.add_argument("--colonne", default=None,
-                   help="énergie utilisée : energie_nette_J (par défaut si présente : surplus dû au tri) ou energie_J (brute)")
+                   help="énergie utilisée : energie_nette_J (par défaut si présente : surplus dû au tri) ou energie_nette_J (brute)")
     p.add_argument("--sortie", default="results")
     p.add_argument("--figures", default="figures")
     return p
@@ -55,7 +55,7 @@ def main():
     df = pd.read_csv(args.fichier)
     if args.colonne is None:
         net_ok = "energie_nette_J" in df.columns and (df["energie_nette_J"] > 0).all()
-        args.colonne = "energie_nette_J" if net_ok else "energie_J"
+        args.colonne = "energie_nette_J" if net_ok else "energie_nette_J"
         if "energie_nette_J" in df.columns and not net_ok:
             print("Énergie nette inutilisable (valeurs <= 0) : l'énergie brute est utilisée.")
     if args.colonne not in df.columns:

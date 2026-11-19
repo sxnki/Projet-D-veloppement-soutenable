@@ -1,7 +1,7 @@
 """
 Diagnostic du compteur d'énergie de Windows : à lancer UNE FOIS avant le benchmark.
 
-    py diagnostic_windows.py
+    python diagnostic_windows.py
 
 Il mesure 6 s au repos puis 6 s sous charge (un cœur à 100 %), puis :
 - déduit l'unité du compteur (picowatt-heure, microjoule, ...) en vérifiant que les puissances obtenues
